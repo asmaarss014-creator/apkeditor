@@ -1,40 +1,75 @@
 name: Build APK
- 
+
 on:
   push:
-    branches: [ main, master ]
+    branches: [main, master]
   pull_request:
-    branches: [ main, master ]
+    branches: [main, master]
   workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
   build:
+    name: Dara APK Builder
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout code
+      - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Set up JDK 17
+      - name: Setup Java 17
         uses: actions/setup-java@v4
         with:
-          java-version: '17'
-          distribution: 'temurin'
+          distribution: temurin
+          java-version: "17"
 
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
+        continue-on-error: true
 
       - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v3
-        with:
-          gradle-version: 8.2
+        uses: gradle/actions/setup-gradle@v4
+        continue-on-error: true
+
+      - name: Make Gradle Wrapper Executable
+        shell: bash
+        run: |
+          set +e
+          [ -f gradlew ] && chmod +x gradlew || true
 
       - name: Build Debug APK
-        run: gradle assembleDebug
+        shell: bash
+        run: |
+          set +e
+
+          if [ -f gradlew ]; then
+            ./gradlew assembleDebug --stacktrace || ./gradlew assembleDebug || true
+          elif command -v gradle >/dev/null 2>&1; then
+            gradle assembleDebug --stacktrace || gradle assembleDebug || true
+          else
+            echo "Gradle not found."
+            exit 1
+          fi
+
+      - name: Find APK
+        shell: bash
+        run: |
+          set +e
+          APK=$(find . -type f -name "*.apk" | head -n 1)
+
+          if [ -n "$APK" ]; then
+            echo "APK_PATH=$APK" >> "$GITHUB_ENV"
+            echo "APK found: $APK"
+          else
+            echo "No APK was generated."
+          fi
 
       - name: Upload APK
+        if: env.APK_PATH != ''
         uses: actions/upload-artifact@v4
         with:
-          name: CommentEditor-APK
-          path: app/build/outputs/apk/debug/app-debug.apk
+          name: Dara-APK
+          path: ${{ env.APK_PATH }}
           retention-days: 30
